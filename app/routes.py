@@ -6,12 +6,8 @@ from sqlalchemy import desc
 import base64
 import cv2
 import numpy as np
-from roboflow import Roboflow
-from dotenv import load_dotenv
 import os
-
-# Load environment variables from .env file
-load_dotenv()
+from roboflow import Roboflow
 
 def decode_image(image_base64):
     image_data = base64.b64decode(image_base64.split(',')[1])
@@ -19,26 +15,31 @@ def decode_image(image_base64):
     img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     return img
 
-# Create an inference client using the API key from environment variables
-rf = Roboflow(api_key=os.getenv("ROBOFLOW_API_KEY"))
-project = rf.workspace().project("boxing-lelg6")
-model = project.version(3).model
+@app.route('/upload_frame', methods=['POST'])
+def upload_frame():
+    if 'frame' not in request.files:
+        return jsonify({'error': 'No frame part'}), 400
 
-@app.route('/process_frame', methods=['POST'])
-def process_frame():
-    data = request.json
-    image = decode_image(data['image'])
-    
-    # Save the image to a temporary file
-    temp_image_path = "temp_image.jpg"
-    cv2.imwrite(temp_image_path, image)
-    
-    # Run inference on the saved image
-    results = model.predict(temp_image_path).json()
+    frame = request.files['frame']
+    if frame.filename == '':
+        return jsonify({'error': 'No selected frame'}), 400
 
-    # Do something with the results
-    # For example, you can return the number of detected objects
-    return jsonify({'detections': len(results['predictions'])})
+    # Save the frame temporarily
+    temp_filename = 'temp_frame.jpg'
+    frame.save(temp_filename)
+
+    # Initialize the Roboflow client
+    rf = Roboflow(api_key="IhnzMIPA02sn9csVky59")
+    project = rf.workspace().project("boxing-lelg6")
+    model = project.version(3).model
+
+    # Run inference
+    prediction = model.predict(temp_filename, confidence=40, overlap=30).json()
+
+    # Remove the temporary file
+    os.remove(temp_filename)
+
+    return jsonify(prediction), 200
 
 @app.route('/fighter', methods=['POST'])
 def create_fighter():
